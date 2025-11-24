@@ -2,6 +2,66 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Distribution / build
+build/
+dist/
+eggs/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-workspace
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Secrets / env
+.env
+.env.*
+credentials.json
+
+# Data / vector stores and large binary artifacts
+/data/vector_store/*.faiss
+/backend/data/vector_store/*.faiss
+# local document dumps
+data/documents/
+
+# Misc
+*.sqlite3
+*.db
+*.pyc
+*.pyo
+*.so
+*.dylib
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 *.so
 .Python
 build/

@@ -27,7 +27,8 @@ function App() {
 
     try {
       // Construct streaming URL with query parameters
-      const url = new URL('http://localhost:8000/api/rag/chat/stream');
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+      const url = new URL(`${apiUrl}/api/v1/chat/stream`);
       url.searchParams.append('query', query);
       if (threadId) {
         url.searchParams.append('session_id', threadId);
@@ -138,7 +139,7 @@ function App() {
     <div className="App">
       <div className="chat-container">
         <div className="chat-header">
-          <h1>Agentic RAG Chat</h1>
+          <h1>🎓 AI Teaching Assistant</h1>
           <button onClick={clearChat} className="clear-btn" disabled={isLoading}>
             New Chat
           </button>
@@ -147,8 +148,16 @@ function App() {
         <div className="messages-container">
           {messages.length === 0 && (
             <div className="welcome-message">
-              <h2>Welcome to Agentic RAG!</h2>
-              <p>Ask me anything. I can search local knowledge, web, and cloud resources.</p>
+              <h2>👋 Hello, Student!</h2>
+              <p>I'm your AI Teaching Assistant. Ask me about course materials, algorithms, programming concepts, or recent research!</p>
+              <div className="example-questions">
+                <h3>Try asking:</h3>
+                <ul>
+                  <li>"Explain how quicksort works"</li>
+                  <li>"What is dynamic programming?"</li>
+                  <li>"What are recent advances in machine learning?"</li>
+                </ul>
+              </div>
             </div>
           )}
 
@@ -205,7 +214,7 @@ function App() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask me anything..."
+            placeholder="Ask your question about the course material..."
             disabled={isLoading}
             className="input-field"
           />

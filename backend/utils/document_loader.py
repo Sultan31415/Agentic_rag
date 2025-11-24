@@ -8,7 +8,7 @@ from langchain_community.document_loaders import (
     PyPDFLoader
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from config.settings import settings
@@ -100,11 +100,11 @@ def create_vector_store(documents: list, save_path: str = None):
         FAISS vector store
     """
     print("Creating vector store with embeddings...")
-    
+
     # Initialize embeddings
-    embeddings = GoogleGenerativeAIEmbeddings(
+    embeddings = OpenAIEmbeddings(
         model=settings.embedding_model,
-        google_api_key=settings.google_api_key
+        openai_api_key=settings.openai_api_key
     )
     
     # Create vector store

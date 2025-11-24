@@ -4,7 +4,7 @@ Vector search tool for querying local knowledge base.
 
 from langchain_core.tools import tool
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 from config.settings import settings
 import os
@@ -28,9 +28,9 @@ class VectorSearchManager:
         
         try:
             # Initialize embeddings
-            embeddings = GoogleGenerativeAIEmbeddings(
+            embeddings = OpenAIEmbeddings(
                 model=settings.embedding_model,
-                google_api_key=settings.google_api_key
+                openai_api_key=settings.openai_api_key
             )
             
             # Try to load existing vector store
@@ -58,9 +58,9 @@ class VectorSearchManager:
         except Exception as e:
             print(f"Error initializing vector store: {e}")
             # Create minimal fallback
-            embeddings = GoogleGenerativeAIEmbeddings(
+            embeddings = OpenAIEmbeddings(
                 model=settings.embedding_model,
-                google_api_key=settings.google_api_key
+                openai_api_key=settings.openai_api_key
             )
             self._vector_store = FAISS.from_documents(
                 [Document(page_content="Vector store initialization failed. Please add documents.")],

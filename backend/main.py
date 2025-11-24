@@ -2,6 +2,7 @@
 Main FastAPI application for Agentic RAG.
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
@@ -10,39 +11,17 @@ from utils.logger import logger
 import uvicorn
 
 
-# Create FastAPI app
-app = FastAPI(
-    title="Agentic RAG Multi-Agent System",
-    version="1.0.0",
-    description=(
-        "A sophisticated multi-agent RAG system using LangGraph and Google Gemini. "
-        "Features a supervisor agent that coordinates specialized agents for "
-        "local knowledge, web search, and cloud resources."
-    ),
-    docs_url="/docs",
-    redoc_url="/redoc"
-)
-
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events."""
+    # Startup
     logger.info("=" * 60)
     logger.info("Starting Agentic RAG Multi-Agent System")
     logger.info("=" * 60)
     logger.info(f"Environment: {settings.app_env}")
     logger.info(f"LLM Model: {settings.llm_model}")
     logger.info(f"API Prefix: {settings.api_v1_prefix}")
-    
+
     # Initialize the agent graph
     try:
         from graph.agent_graph import get_agent_graph
@@ -53,7 +32,7 @@ async def startup_event():
         logger.error(f"✗ Failed to initialize agent graph: {e}")
         import traceback
         traceback.print_exc()
-    
+
     # Initialize vector store
     try:
         from tools.vector_search import vector_search_manager
@@ -64,7 +43,7 @@ async def startup_event():
         logger.error(f"✗ Failed to initialize vector store: {e}")
         import traceback
         traceback.print_exc()
-    
+
     logger.info("=" * 60)
     logger.info("System Ready!")
     logger.info("=" * 60)
@@ -72,11 +51,34 @@ async def startup_event():
     logger.info(f"Query Endpoint: http://localhost:8000{settings.api_v1_prefix}/query")
     logger.info("=" * 60)
 
+    yield  # Server runs here
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
+    # Shutdown
     logger.info("Shutting down Agentic RAG system...")
+
+
+# Create FastAPI app with lifespan
+app = FastAPI(
+    title="Agentic RAG Multi-Agent System",
+    version="1.0.0",
+    description=(
+        "A sophisticated multi-agent RAG system using LangGraph and Google Gemini. "
+        "Features a supervisor agent that coordinates specialized agents for "
+        "local knowledge, web search, and cloud resources."
+    ),
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan  # Use modern lifespan pattern
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
