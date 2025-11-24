@@ -1,12 +1,22 @@
-import { ChatScreen } from './screens/ChatScreen';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ChatScreenWithSidebar } from './screens/ChatScreenWithSidebar';
+import { AttachmentsScreen } from './screens/AttachmentsScreen';
 
 /**
  * Main Application Component
  *
- * Simple entry point that renders the ChatScreen
+ * Router setup with chat and attachments pages
  */
 function App() {
-  return <ChatScreen />;
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<ChatScreenWithSidebar />} />
+        <Route path="/attachments" element={<AttachmentsScreen />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
 export default App;

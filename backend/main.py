@@ -104,10 +104,44 @@ app.include_router(router)
 
 if __name__ == "__main__":
     """Run the application."""
+    import sys
+    import os
+    from pathlib import Path
+    
+    # Determine if we should use reload (development only)
+    # On Windows, disable reload by default due to multiprocessing spawn issues
+    use_reload = settings.app_env == "development" and sys.platform != "win32"
+    
+    # Get the backend directory for reload_dirs
+    backend_dir = Path(__file__).parent.resolve()
+    
+    # Configure reload settings for Windows compatibility
+    reload_config = {}
+    
+    if use_reload:
+        reload_config = {
+            "reload": True,
+            "reload_delay": 1.0,  # Increased delay to avoid rapid reloads
+            "reload_dirs": [str(backend_dir)],  # Only watch backend directory
+        }
+        
+        # On Windows, try to use watchfiles if available for better reload support
+        if sys.platform == "win32":
+            try:
+                import watchfiles
+                reload_config["reload_includes"] = ["*.py"]
+                reload_config["reload_excludes"] = ["*.pyc", "__pycache__", "*.db", "*.faiss", "*.pkl"]
+                use_reload = True  # Enable reload if watchfiles is available
+            except ImportError:
+                # Disable reload on Windows if watchfiles is not available
+                use_reload = False
+                reload_config = {}
+                print("Warning: Reload disabled on Windows. Install 'watchfiles' for better reload support: pip install watchfiles")
+    
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
-        log_level=settings.log_level.lower()
+        log_level=settings.log_level.lower(),
+        **reload_config
     )

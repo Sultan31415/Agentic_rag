@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"  # OpenAI embedding model
     
     # Vector Search Settings
-    vector_store_path: str = "data/vector_store"
+    vector_store_path: str = str(PROJECT_ROOT / "backend" / "data" / "vector_store")
     top_k_results: int = 3
     
     # API Settings

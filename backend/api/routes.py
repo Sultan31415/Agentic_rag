@@ -2,20 +2,38 @@
 API routes for the Agentic RAG system.
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import StreamingResponse, Response
 from sse_starlette.sse import EventSourceResponse
 from models.requests import QueryRequest
 from models.responses import QueryResponse, AgentResult, HealthResponse
-from graph.agent_graph import get_agent_graph
-from langchain_core.messages import HumanMessage
 from config.settings import settings
+from utils.document_loader import load_documents_from_directory, split_documents, create_vector_store
 import uuid
 import time
 import json
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import asyncio
+import os
+import shutil
+from pathlib import Path
+
+# Lazy imports to avoid heavy imports during reload
+def _get_agent_graph():
+    """Lazy import of agent graph to avoid reload issues."""
+    from graph.agent_graph import get_agent_graph
+    return get_agent_graph()
+
+def _get_human_message_class():
+    """Lazy import of HumanMessage to avoid reload issues."""
+    from langchain_core.messages import HumanMessage
+    return HumanMessage
+
+def _get_vector_search_manager():
+    """Lazy import of vector search manager to avoid reload issues."""
+    from tools.vector_search import vector_search_manager
+    return vector_search_manager
 
 
 router = APIRouter(prefix=settings.api_v1_prefix, tags=["Agentic RAG"])
@@ -52,10 +70,11 @@ async def query_agents(request: QueryRequest):
         # Generate session ID if not provided
         session_id = request.session_id or str(uuid.uuid4())
         
-        # Get the agent graph
-        agent_graph = get_agent_graph()
+        # Get the agent graph (lazy import)
+        agent_graph = _get_agent_graph()
         
         # Prepare initial state
+        HumanMessage = _get_human_message_class()
         initial_state = {
             "messages": [HumanMessage(content=request.query)]
         }
@@ -188,10 +207,11 @@ async def stream_chat(query: str, session_id: Optional[str] = None, max_iteratio
         # Generate thread ID if not provided
         thread_id = session_id or str(uuid.uuid4())
         
-        # Get the agent graph
-        agent_graph = get_agent_graph()
+        # Get the agent graph (lazy import)
+        agent_graph = _get_agent_graph()
         
         # Prepare initial state
+        HumanMessage = _get_human_message_class()
         initial_state = {
             "messages": [HumanMessage(content=query)]
         }
@@ -324,7 +344,7 @@ async def get_thread_messages(thread_id: str):
         List of messages in the thread
     """
     try:
-        agent_graph = get_agent_graph()
+        agent_graph = _get_agent_graph()
         
         # Get state for this thread
         config = {"configurable": {"thread_id": thread_id}}
@@ -397,7 +417,7 @@ async def health_check():
     """
     try:
         # Try to get the graph to verify initialization
-        graph = get_agent_graph()
+        graph = _get_agent_graph()
         
         return HealthResponse(
             status="healthy",
@@ -430,6 +450,7 @@ async def get_graph_visualization():
     try:
         from graph.agent_graph import graph_manager
         
+        # Get graph manager (lazy import)
         png_bytes = graph_manager.visualize()
         
         if png_bytes:
@@ -446,6 +467,249 @@ async def get_graph_visualization():
         )
 
 
+@router.post("/documents/upload")
+async def upload_documents(files: List[UploadFile] = File(...)):
+    """
+    Upload documents to the knowledge base.
+    
+    Accepts multiple files (PDF, TXT) and adds them to the vector store.
+    
+    Args:
+        files: List of uploaded files
+        
+    Returns:
+        Upload confirmation with file details
+    """
+    try:
+        # Ensure documents directory exists (relative to project root)
+        project_root = Path(__file__).parent.parent.parent
+        documents_dir = project_root / "data" / "documents"
+        documents_dir.mkdir(parents=True, exist_ok=True)
+        
+        uploaded_files = []
+        failed_files = []
+        
+        for file in files:
+            try:
+                # Validate file type
+                file_ext = Path(file.filename).suffix.lower()
+                if file_ext not in ['.pdf', '.txt']:
+                    failed_files.append({
+                        "filename": file.filename,
+                        "error": f"Unsupported file type: {file_ext}. Only PDF and TXT files are supported."
+                    })
+                    continue
+                
+                # Save file
+                file_path = documents_dir / file.filename
+                with open(file_path, "wb") as buffer:
+                    shutil.copyfileobj(file.file, buffer)
+                
+                uploaded_files.append({
+                    "filename": file.filename,
+                    "size": file_path.stat().st_size,
+                    "type": file_ext
+                })
+                
+            except Exception as e:
+                failed_files.append({
+                    "filename": file.filename,
+                    "error": str(e)
+                })
+        
+        if not uploaded_files:
+            raise HTTPException(
+                status_code=400,
+                detail="No files were successfully uploaded"
+            )
+        
+        # Reload and update vector store
+        try:
+            # Load new documents
+            new_documents = load_documents_from_directory(str(documents_dir))
+            
+            # Split documents
+            splits = split_documents(new_documents)
+            
+            # Recreate vector store with all documents
+            vector_store = create_vector_store(splits, settings.vector_store_path)
+            
+            # Update the global vector store manager
+            vector_search_manager = _get_vector_search_manager()
+            vector_search_manager._vector_store = vector_store
+            
+            return {
+                "status": "success",
+                "uploaded": uploaded_files,
+                "failed": failed_files,
+                "total_documents": len(splits),
+                "message": f"Successfully added {len(uploaded_files)} file(s) to knowledge base"
+            }
+            
+        except Exception as e:
+            # Files were uploaded but vector store update failed
+            return {
+                "status": "partial",
+                "uploaded": uploaded_files,
+                "failed": failed_files,
+                "error": f"Files uploaded but vector store update failed: {str(e)}",
+                "message": "Files saved but knowledge base update failed. Please try again."
+            }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error uploading documents: {str(e)}"
+        )
+
+
+@router.get("/documents/list")
+async def list_documents():
+    """
+    List all documents in the knowledge base.
+    
+    Returns:
+        List of document files in the documents directory
+    """
+    try:
+        project_root = Path(__file__).parent.parent.parent
+        documents_dir = project_root / "data" / "documents"
+        
+        if not documents_dir.exists():
+            return {
+                "documents": [],
+                "count": 0
+            }
+        
+        documents = []
+        for file_path in documents_dir.iterdir():
+            if file_path.is_file() and file_path.suffix.lower() in ['.pdf', '.txt']:
+                documents.append({
+                    "filename": file_path.name,
+                    "size": file_path.stat().st_size,
+                    "type": file_path.suffix.lower(),
+                    "modified": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
+                })
+        
+        return {
+            "documents": documents,
+            "count": len(documents)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error listing documents: {str(e)}"
+        )
+
+
+@router.delete("/documents/{filename}")
+async def delete_document(filename: str):
+    """
+    Delete a document from the knowledge base.
+    
+    Args:
+        filename: Name of the file to delete
+        
+    Returns:
+        Deletion confirmation
+    """
+    try:
+        project_root = Path(__file__).parent.parent.parent
+        documents_dir = project_root / "data" / "documents"
+        file_path = documents_dir / filename
+        
+        # Security check: ensure file is in documents directory
+        if not str(file_path).startswith(str(documents_dir.resolve())):
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid file path"
+            )
+        
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"File not found: {filename}"
+            )
+        
+        # Delete file
+        file_path.unlink()
+        
+        # Reload vector store (remove deleted document)
+        try:
+            new_documents = load_documents_from_directory(str(documents_dir))
+            if new_documents:
+                splits = split_documents(new_documents)
+                vector_store = create_vector_store(splits, settings.vector_store_path)
+                vector_search_manager = _get_vector_search_manager()
+                vector_search_manager._vector_store = vector_store
+            else:
+                # Create empty vector store
+                from langchain_core.documents import Document
+                from langchain_openai import OpenAIEmbeddings
+                from langchain_community.vectorstores import FAISS
+                embeddings = OpenAIEmbeddings(
+                    model=settings.embedding_model,
+                    openai_api_key=settings.openai_api_key
+                )
+                vector_store = FAISS.from_documents(
+                    [Document(page_content="Knowledge base is empty. Add documents to get started.")],
+                    embeddings
+                )
+                vector_store.save_local(settings.vector_store_path)
+                vector_search_manager = _get_vector_search_manager()
+                vector_search_manager._vector_store = vector_store
+        except Exception as e:
+            # File deleted but vector store update failed
+            return {
+                "status": "partial",
+                "message": f"File deleted but vector store update failed: {str(e)}"
+            }
+        
+        return {
+            "status": "success",
+            "message": f"File {filename} deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error deleting document: {str(e)}"
+        )
+
+
+@router.get("/threads")
+async def list_threads():
+    """
+    List all conversation threads.
+    
+    Returns:
+        List of thread IDs and metadata
+    """
+    try:
+        agent_graph = _get_agent_graph()
+        
+        # Get all thread IDs from checkpointer
+        # Note: This is a simplified implementation
+        # In production, you'd query the checkpointer database directly
+        threads = []
+        
+        # For now, return empty list or implement based on your checkpointer
+        # This would require accessing the checkpointer's internal storage
+        return {
+            "threads": threads,
+            "count": len(threads)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error listing threads: {str(e)}"
+        )
+
+
 @router.get("/")
 async def root():
     """Root endpoint with API information."""
@@ -456,6 +720,7 @@ async def root():
             "query": f"{settings.api_v1_prefix}/query",
             "health": f"{settings.api_v1_prefix}/health",
             "visualization": f"{settings.api_v1_prefix}/graph/visualization",
+            "upload": f"{settings.api_v1_prefix}/documents/upload",
             "docs": "/docs"
         },
         "agents": [

@@ -15,7 +15,7 @@ from config.settings import settings
 import os
 
 
-def load_documents_from_directory(directory_path: str = "data/documents"):
+def load_documents_from_directory(directory_path: str = None):
     """
     Load documents from a directory.
     
@@ -25,6 +25,11 @@ def load_documents_from_directory(directory_path: str = "data/documents"):
     Returns:
         List of loaded documents
     """
+    if directory_path is None:
+        # Default to project root data/documents
+        project_root = Path(__file__).parent.parent.parent
+        directory_path = str(project_root / "data" / "documents")
+    
     print(f"Loading documents from {directory_path}...")
     
     documents = []

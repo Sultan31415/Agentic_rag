@@ -27,7 +27,6 @@ langgraph = ">=1.0.0"
 langchain-google-genai = "^3.0.0"
 
 # OpenAI Integration (for embeddings)
-langchain-openai = "^0.3.0"
 
 # Vector Store (FAISS for local development)
 faiss-cpu = "^1.8.0"
@@ -52,8 +51,7 @@ langgraph-checkpoint-sqlite = "^2.0.0"
 langgraph-checkpoint-postgres = "^2.0.0"
 aiosqlite = "^0.20.0"
 psycopg = {extras = ["binary", "pool"], version = "^3.2.0"}
-
-[tool.poetry.group.dev.dependencies]
+langchain-openai = "^1.0.3"
 
 [build-system]
 requires = ["poetry-core"]

@@ -35,6 +35,12 @@ class VectorSearchManager:
             
             # Try to load existing vector store
             vector_store_path = settings.vector_store_path
+            # Ensure path is absolute
+            if not os.path.isabs(vector_store_path):
+                from pathlib import Path
+                project_root = Path(__file__).parent.parent.parent
+                vector_store_path = str(project_root / vector_store_path)
+            
             if os.path.exists(vector_store_path) and os.path.exists(f"{vector_store_path}/index.faiss"):
                 print(f"Loading existing vector store from {vector_store_path}")
                 self._vector_store = FAISS.load_local(
