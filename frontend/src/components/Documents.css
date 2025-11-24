@@ -1,0 +1,193 @@
+.documents-container {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.documents-header {
+  margin-bottom: 2rem;
+}
+
+.documents-header h1 {
+  color: #fff;
+  margin-bottom: 0.5rem;
+  font-size: 2rem;
+}
+
+.documents-header p {
+  color: #888;
+  font-size: 1rem;
+}
+
+.upload-section {
+  background: #1a1a1a;
+  border: 2px dashed #333;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  margin-bottom: 2rem;
+  transition: border-color 0.2s;
+}
+
+.upload-section:hover {
+  border-color: #4a9eff;
+}
+
+.upload-button {
+  background: #4a9eff;
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-button:hover:not(:disabled) {
+  background: #3a8eef;
+  transform: translateY(-2px);
+}
+
+.upload-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.upload-progress {
+  margin-top: 1rem;
+  color: #4a9eff;
+  font-size: 0.9rem;
+}
+
+.error-message {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #442222;
+  border: 1px solid #ff4444;
+  border-radius: 8px;
+  color: #ff6666;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.error-message button {
+  background: transparent;
+  border: none;
+  color: #ff6666;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0 0.5rem;
+  line-height: 1;
+}
+
+.documents-list {
+  margin-top: 2rem;
+}
+
+.loading {
+  text-align: center;
+  color: #888;
+  padding: 3rem;
+}
+
+.empty-state {
+  text-align: center;
+  color: #666;
+  padding: 3rem;
+  background: #1a1a1a;
+  border-radius: 12px;
+}
+
+.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.document-card {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.document-card:hover {
+  border-color: #4a9eff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(74, 158, 255, 0.1);
+}
+
+.document-icon {
+  font-size: 2.5rem;
+  flex-shrink: 0;
+}
+
+.document-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.document-name {
+  color: #fff;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  word-break: break-word;
+}
+
+.document-meta {
+  display: flex;
+  gap: 0.5rem;
+  color: #888;
+  font-size: 0.85rem;
+}
+
+.delete-document-btn {
+  background: transparent;
+  border: none;
+  color: #666;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  line-height: 1;
+  border-radius: 4px;
+  transition: all 0.2s;
+  opacity: 0;
+}
+
+.document-card:hover .delete-document-btn {
+  opacity: 1;
+}
+
+.delete-document-btn:hover {
+  color: #ff4444;
+  background: #2a1a1a;
+}
+
+/* Scrollbar styling */
+.documents-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.documents-container::-webkit-scrollbar-track {
+  background: #0f0f0f;
+}
+
+.documents-container::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+.documents-container::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+

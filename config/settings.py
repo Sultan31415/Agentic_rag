@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     max_iterations: int = 5
     
     # LLM Settings
-    llm_model: str = "gemini-2.0-flash-exp"
+    llm_model: str = "gemini-1.5-flash"
     llm_temperature: float = 0.3
     embedding_model: str = "models/embedding-001"
     

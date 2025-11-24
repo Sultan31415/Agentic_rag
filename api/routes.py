@@ -2,7 +2,7 @@
 API routes for the Agentic RAG system.
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import StreamingResponse, Response
 from sse_starlette.sse import EventSourceResponse
 from models.requests import QueryRequest
@@ -10,12 +10,19 @@ from models.responses import QueryResponse, AgentResult, HealthResponse
 from graph.agent_graph import get_agent_graph
 from langchain_core.messages import HumanMessage
 from config.settings import settings
+from utils.document_loader import load_documents_from_directory, split_documents, create_vector_store
+from tools.vector_search import vector_search_manager
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_core.documents import Document
 import uuid
 import time
 import json
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import asyncio
+import os
+import shutil
+from pathlib import Path
 
 
 router = APIRouter(prefix=settings.api_v1_prefix, tags=["Agentic RAG"])
@@ -159,6 +166,20 @@ async def query_agents(request: QueryRequest):
         print(f"Error processing query: {str(e)}")
         import traceback
         traceback.print_exc()
+        
+        # Check for quota/rate limit errors
+        error_str = str(e)
+        if "429" in error_str or "quota" in error_str.lower() or "rate limit" in error_str.lower():
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "API quota or rate limit exceeded. "
+                    "Please check your API plan and billing details. "
+                    "If using the free tier, ensure you're using a supported model (e.g., gemini-1.5-flash). "
+                    f"Original error: {error_str[:200]}"
+                )
+            )
+        
         raise HTTPException(
             status_code=500,
             detail=f"Error processing query: {str(e)}"
@@ -443,6 +464,266 @@ async def get_graph_visualization():
         raise HTTPException(
             status_code=500,
             detail=f"Error generating visualization: {str(e)}"
+        )
+
+
+@router.get("/documents/test")
+async def test_documents_endpoint():
+    """Test endpoint to verify documents routes are accessible."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("TEST ENDPOINT CALLED: /documents/test")
+    return {
+        "status": "success",
+        "message": "Documents endpoint is accessible",
+        "router_prefix": router.prefix,
+        "full_path": f"{router.prefix}/documents/test"
+    }
+
+
+@router.post("/documents/upload")
+async def upload_document(file: UploadFile = File(...)):
+    """
+    Upload a document to the knowledge base.
+    
+    Supports PDF and text files. The document will be processed,
+    chunked, and added to the vector store.
+    
+    Args:
+        file: The file to upload
+        
+    Returns:
+        Upload confirmation with document info
+    """
+    try:
+        # Validate file type
+        allowed_extensions = {'.pdf', '.txt'}
+        file_ext = Path(file.filename).suffix.lower()
+        
+        if file_ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type. Allowed types: {', '.join(allowed_extensions)}"
+            )
+        
+        # Create uploads directory if it doesn't exist
+        upload_dir = Path("data/documents")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save file temporarily
+        file_path = upload_dir / file.filename
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Load and process the document
+        try:
+            if file_ext == '.pdf':
+                loader = PyPDFLoader(str(file_path))
+            else:
+                loader = TextLoader(str(file_path))
+            
+            documents = loader.load()
+            
+            # Split documents
+            splits = split_documents(documents, chunk_size=1000, chunk_overlap=200)
+            
+            # Get vector store and add documents
+            vector_store = vector_search_manager.get_vector_store()
+            
+            # If vector store doesn't exist, try to create it
+            if vector_store is None:
+                try:
+                    vector_search_manager._ensure_vector_store()
+                    vector_store = vector_search_manager.get_vector_store()
+                except Exception as e:
+                    # Clean up file on error
+                    if file_path.exists():
+                        file_path.unlink()
+                    error_msg = str(e)
+                    if "quota" in error_msg.lower() or "429" in error_msg:
+                        raise HTTPException(
+                            status_code=429,
+                            detail=f"API quota exceeded. Please check your Google API quota and billing settings. {error_msg[:200]}"
+                        )
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Error creating vector store: {error_msg[:200]}"
+                    )
+            
+            if vector_store is None:
+                # Clean up file on error
+                if file_path.exists():
+                    file_path.unlink()
+                raise HTTPException(
+                    status_code=500,
+                    detail="Cannot create vector store. Please check your API settings and quota."
+                )
+            
+            vector_store.add_documents(splits)
+            
+            # Save updated vector store
+            os.makedirs(settings.vector_store_path, exist_ok=True)
+            vector_store.save_local(settings.vector_store_path)
+            
+            return {
+                "status": "success",
+                "filename": file.filename,
+                "chunks_added": len(splits),
+                "message": f"Successfully added {file.filename} to knowledge base"
+            }
+            
+        except Exception as e:
+            # Clean up file on error
+            if file_path.exists():
+                file_path.unlink()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error processing document: {str(e)}"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error uploading document: {str(e)}"
+        )
+
+
+@router.get("/documents")
+async def list_documents():
+    """
+    List all documents in the knowledge base.
+    
+    Returns:
+        List of document files in the documents directory
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info("=" * 60)
+    logger.info("GET /documents endpoint called")
+    logger.info(f"Router prefix: {router.prefix}")
+    logger.info(f"Full path should be: {router.prefix}/documents")
+    logger.info("=" * 60)
+    
+    try:
+        documents_dir = Path("data/documents")
+        logger.info(f"Looking for documents in: {documents_dir.absolute()}")
+        logger.info(f"Directory exists: {documents_dir.exists()}")
+        
+        documents = []
+        
+        if documents_dir.exists():
+            logger.info(f"Directory exists, listing files...")
+            for file_path in documents_dir.iterdir():
+                logger.info(f"Found file: {file_path.name}, is_file: {file_path.is_file()}, suffix: {file_path.suffix.lower()}")
+                if file_path.is_file() and file_path.suffix.lower() in {'.pdf', '.txt'}:
+                    stat = file_path.stat()
+                    documents.append({
+                        "filename": file_path.name,
+                        "size": stat.st_size,
+                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    })
+                    logger.info(f"Added document: {file_path.name}")
+        else:
+            logger.warning(f"Documents directory does not exist: {documents_dir.absolute()}")
+        
+        logger.info(f"Returning {len(documents)} documents")
+        return {
+            "documents": documents,
+            "count": len(documents)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing documents: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error listing documents: {str(e)}"
+        )
+
+
+@router.delete("/documents/{filename}")
+async def delete_document(filename: str):
+    """
+    Delete a document from the knowledge base.
+    
+    Note: This removes the file but doesn't remove its chunks from
+    the vector store. For production, you'd want to rebuild the vector
+    store after deletion.
+    
+    Args:
+        filename: Name of the file to delete
+        
+    Returns:
+        Deletion confirmation
+    """
+    try:
+        file_path = Path("data/documents") / filename
+        
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Document {filename} not found"
+            )
+        
+        # Security check: ensure file is in documents directory
+        if not str(file_path.resolve()).startswith(str(Path("data/documents").resolve())):
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid file path"
+            )
+        
+        file_path.unlink()
+        
+        return {
+            "status": "success",
+            "filename": filename,
+            "message": f"Document {filename} deleted"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error deleting document: {str(e)}"
+        )
+
+
+@router.post("/documents/reindex")
+async def reindex_knowledge_base():
+    """
+    Rebuild the entire knowledge base from documents directory.
+    
+    This will reload all documents, re-split them, and recreate
+    the vector store. Useful after deleting documents or when
+    you want to refresh the index.
+    
+    Returns:
+        Reindexing confirmation
+    """
+    try:
+        from utils.document_loader import prepare_knowledge_base
+        
+        # Rebuild knowledge base
+        vector_store = prepare_knowledge_base(
+            documents_dir="data/documents",
+            vector_store_path=settings.vector_store_path
+        )
+        
+        # Update the manager's vector store
+        vector_search_manager._vector_store = vector_store
+        
+        return {
+            "status": "success",
+            "message": "Knowledge base reindexed successfully"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error reindexing knowledge base: {str(e)}"
         )
 
 
